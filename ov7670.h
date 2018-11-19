@@ -8,6 +8,8 @@
 #ifndef OV7670_H_
 #define OV7670_H_
 
+#define Wire Wire1
+
 #define CHANGE_REG_NUM 115
 extern const uint8_t change_reg[CHANGE_REG_NUM][2];
 
@@ -207,10 +209,10 @@ public:
         uint8_t ver = readRegister(OV7670_REG_VER);
 
         if(pid != 0x76){
-            __BKPT();
+            return false;
         }
         if(ver != 0x73){
-            __BKPT();
+            return false;
         }
 
         //write a configuration

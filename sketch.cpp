@@ -10,14 +10,12 @@
 #include <Adafruit_ZeroDMA.h>
 #include "utility/dma.h"
 
-#define TFT_DC 6
-#define TFT_CS 5
-#define TFT_RST 3
-
-SPIClass SPI_TFT (&sercom4,  6,  4,  7,  SPI_PAD_0_SCK_1,  SERCOM_RX_PAD_2);
+#define TFT_DC 9
+#define TFT_CS 10
+#define TFT_RST 6
 
 ov7670 cam;
-ili9341 tft(TFT_CS, TFT_DC, TFT_RST, &SPI_TFT);
+ili9341 tft(TFT_CS, TFT_DC, TFT_RST, &SPI);
 
 Adafruit_ZeroDMA pccDMA;
 DmacDescriptor *pccDesc1;
@@ -26,18 +24,22 @@ ZeroDMAstatus    stat; // DMA status codes returned by some functions
 #define DATA_LENGTH (320*240/sizeof(uint16_t))
 uint32_t datamem[DATA_LENGTH];
 
-void empty(Adafruit_ZeroDMA *dma){ }
+void empty(Adafruit_ZeroDMA *dma){}
+
 
 void startPCC(){
    stat = pccDMA.startJob();
+   //detachInterrupt(PIN_PCC_DEN1);
 }
 
 void setup(){
 
-    SPI_TFT.begin();
+    // Currently only works with cache disabled
+	CMCC->CTRL.bit.CEN = 0; // disable
+	while(CMCC->SR.bit.CSTS);
+	CMCC->MAINT0.bit.INVALL = 1; // invalidate all
 
-    pinPeripheral(4, PIO_SERCOM);
-    pinPeripheral(7, PIO_SERCOM);
+    SPI.begin();
 
     tft.begin();
     tft.setRotation(1);
@@ -69,26 +71,26 @@ void setup(){
     pccDMA.setAction(DMA_TRIGGER_ACTON_BEAT);
     stat = pccDMA.allocate();
 
-    pccDMA.addDescriptor(
+    pccDesc1 = pccDMA.addDescriptor(
           (void *)(&PCC->RHR.reg),          // move data from here
           datamem,                             // to here
           DATA_LENGTH,                      // this many...
           DMA_BEAT_SIZE_WORD,               // bytes/hword/words
           false,                            // increment source addr?
           true);                            // increment dest addr?
-    //pccDMA.loop(true);
+
     pccDMA.setCallback(empty);
+    //pccDesc1->BTCTRL.bit.BLOCKACT = DMA_BLOCK_ACTION_INT;
 
-    //clock on pin 2
-      GCLK->GENCTRL[3].reg = GCLK_GENCTRL_SRC(GCLK_GENCTRL_SRC_DPLL0_Val) |
-          GCLK_GENCTRL_IDC |
-          GCLK_GENCTRL_DIVSEL |
-          GCLK_GENCTRL_OE |
-          GCLK_GENCTRL_DIV(2) |
-          GCLK_GENCTRL_GENEN;
+    GCLK->GENCTRL[5].reg = GCLK_GENCTRL_SRC(GCLK_GENCTRL_SRC_DPLL0_Val) |
+        GCLK_GENCTRL_IDC |
+        GCLK_GENCTRL_DIVSEL |
+        GCLK_GENCTRL_OE |
+        GCLK_GENCTRL_DIV(2) |
+        GCLK_GENCTRL_GENEN;
 
-    while ( GCLK->SYNCBUSY.reg & GCLK_SYNCBUSY_GENCTRL3);
-    pinPeripheral(2, PIO_AC_CLK);
+    while ( GCLK->SYNCBUSY.reg & GCLK_SYNCBUSY_GENCTRL5);
+    pinPeripheral(PIN_PCC_XCLK, PIO_AC_CLK);
 
     cam.begin();
 
@@ -102,11 +104,11 @@ void loop(){
 
     uint8_t *ptr = (uint8_t *)datamem;
     for(uint32_t i=0; i<DATA_LENGTH*4; i++){
-        SERCOM4->SPI.DATA.bit.DATA = *ptr++; // Writing data into Data register
+        SERCOM7->SPI.DATA.bit.DATA = *ptr++; // Writing data into Data register
 
-        while( SERCOM4->SPI.INTFLAG.bit.DRE == 0 );
+        while( SERCOM7->SPI.INTFLAG.bit.DRE == 0 );
+
     }
     tft.endWrite();
 
 }
-
